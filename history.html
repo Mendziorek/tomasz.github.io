@@ -31,6 +31,7 @@
       <th>Spalanie (l/100km)</th>
       <th>Koszt/km (zł)</th>
       <th>Litry</th>
+      <th>Cena za litr (zł)</th>
       <th>Kwota (zł)</th>
       <th>Przebieg</th>
       <th>Usuń</th>
@@ -46,6 +47,7 @@
   function drawTable() {
     tableBody.innerHTML = "";
     history.slice(1).forEach((entry, i) => {
+      const pricePerLiter = entry.koszt / entry.litry;
       const tr = document.createElement("tr");
 
       tr.innerHTML = `
@@ -56,6 +58,7 @@
         <td>${entry.spalanie.toFixed(2)}</td>
         <td>${entry.kosztZaKm.toFixed(2)}</td>
         <td>${entry.litry.toFixed(2)}</td>
+        <td>${pricePerLiter.toFixed(2)}</td>
         <td>${entry.koszt.toFixed(2)}</td>
         <td>${entry.odo}</td>
         <td><button onclick="deleteEntry(${i + 1})">🗑️</button></td>
