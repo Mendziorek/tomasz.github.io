@@ -20,6 +20,8 @@
 <h1>Historia tankowań</h1>
 
 <button onclick="location.href='index.html'">⬅️ Powrót do wykresu</button>
+<button onclick="clearData()">🧹 Wyczyść wszystkie dane</button>
+
 
 <table id="historyTable">
   <thead>
@@ -67,6 +69,13 @@
       tableBody.appendChild(tr);
     });
   }
+
+function clearData() {
+  if (confirm("Na pewno chcesz usunąć wszystkie wpisy? Tej operacji nie można cofnąć.")) {
+    localStorage.removeItem("fuelHistory");
+    location.reload(); // Przeładuj stronę, żeby odświeżyć widok
+  }
+}
 
   function deleteEntry(index) {
     if (!confirm("Na pewno usunąć ten wpis?")) return;
