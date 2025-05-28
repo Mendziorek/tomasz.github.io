@@ -1,27 +1,172 @@
 <!DOCTYPE html>
-<html>
+<html lang="pl">
 <head>
   <meta charset="UTF-8">
-  <title>Notatnik</title>
+  <title>Monitor Paliwa</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    textarea { width: 100%; height: 200px; }
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    label, input, select { display: block; margin-top: 10px; }
+    #results, #history, #charts { margin-top: 30px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
   </style>
 </head>
 <body>
-  <h1>Notatnik</h1>
-  <textarea id="note"></textarea><br>
-  <button onclick="saveNote()">Zapisz</button>
+  <h1>Monitor tankowania</h1>
+
+  <form id="fuelForm">
+    <label>Poprzedni przebieg (km): <input type="number" id="prevOdo" required></label>
+    <label>Aktualny przebieg (km): <input type="number" id="currOdo" required></label>
+    <label>Ilość paliwa (l): <input type="number" step="0.01" id="liters" required></label>
+    <label>Cena za całość (zł): <input type="number" step="0.01" id="totalCost" required></label>
+    <label>Rodzaj paliwa:
+      <select id="fuelType">
+        <option value="benzyna">Benzyna</option>
+        <option value="lpg">LPG</option>
+      </select>
+    </label>
+    <button type="submit">Dodaj tankowanie</button>
+  </form>
+
+  <div id="results"></div>
+
+  <div id="history">
+    <h2>Historia tankowań</h2>
+    <button onclick="exportCSV()">Eksportuj CSV</button>
+    <table id="historyTable">
+      <thead>
+        <tr>
+          <th>Data</th><th>Rodzaj</th><th>Dystans (km)</th><th>Spalanie (l/100km)</th><th>Koszt/km (zł)</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div id="charts">
+    <h2>Wykres</h2>
+    <canvas id="fuelChart" width="600" height="300"></canvas>
+  </div>
 
   <script>
-    const noteField = document.getElementById("note");
-    // Wczytaj zapisane notatki
-    noteField.value = localStorage.getItem("myNote") || "";
+    const form = document.getElementById("fuelForm");
+    const historyTableBody = document.querySelector("#historyTable tbody");
+    const chartCtx = document.getElementById('fuelChart').getContext('2d');
 
-    function saveNote() {
-      localStorage.setItem("myNote", noteField.value);
-      alert("Zapisano!");
+    let historyData = JSON.parse(localStorage.getItem("fuelHistory")) || [];
+
+    const chart = new Chart(chartCtx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: 'Spalanie (l/100km)',
+            borderColor: 'blue',
+            data: [],
+            yAxisID: 'y',
+            tension: 0.1
+          },
+          {
+            label: 'Koszt za km (zł)',
+            borderColor: 'green',
+            data: [],
+            yAxisID: 'y1',
+            tension: 0.1
+          }
+        ]
+      },
+      options: {
+        scales: {
+          y: {
+            type: 'linear',
+            position: 'left',
+            title: { display: true, text: 'l/100km' }
+          },
+          y1: {
+            type: 'linear',
+            position: 'right',
+            title: { display: true, text: 'zł/km' },
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    });
+
+    function updateChart() {
+      chart.data.labels = historyData.map((item, i) => `#${i + 1}`);
+      chart.data.datasets[0].data = historyData.map(item => item.spalanie);
+      chart.data.datasets[1].data = historyData.map(item => item.kosztZaKm);
+      chart.update();
     }
+
+    function renderTable() {
+      historyTableBody.innerHTML = "";
+      historyData.forEach(entry => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${entry.data}</td>
+          <td>${entry.rodzaj}</td>
+          <td>${entry.dystans.toFixed(1)}</td>
+          <td>${entry.spalanie.toFixed(2)}</td>
+          <td>${entry.kosztZaKm.toFixed(2)}</td>
+        `;
+        historyTableBody.appendChild(row);
+      });
+    }
+
+    function exportCSV() {
+      const headers = "Data,Rodzaj,Dystans (km),Spalanie (l/100km),Koszt za km (zł)\n";
+      const rows = historyData.map(entry =>
+        `${entry.data},${entry.rodzaj},${entry.dystans.toFixed(1)},${entry.spalanie.toFixed(2)},${entry.kosztZaKm.toFixed(2)}`
+      ).join("\n");
+
+      const blob = new Blob([headers + rows], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "historia_tankowan.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+
+      const prevOdo = parseFloat(document.getElementById("prevOdo").value);
+      const currOdo = parseFloat(document.getElementById("currOdo").value);
+      const liters = parseFloat(document.getElementById("liters").value);
+      const totalCost = parseFloat(document.getElementById("totalCost").value);
+      const rodzaj = document.getElementById("fuelType").value;
+      const dystans = currOdo - prevOdo;
+
+      if (dystans <= 0 || liters <= 0 || totalCost <= 0) {
+        document.getElementById("results").innerText = "Upewnij się, że dane są poprawne.";
+        return;
+      }
+
+      const spalanie = (liters / dystans) * 100;
+      const kosztZaKm = totalCost / dystans;
+      const data = new Date().toLocaleDateString("pl-PL");
+
+      const entry = { data, rodzaj, dystans, spalanie, kosztZaKm };
+      historyData.push(entry);
+      localStorage.setItem("fuelHistory", JSON.stringify(historyData));
+
+      document.getElementById("results").innerHTML = `
+        <p><strong>Dodano tankowanie:</strong></p>
+        <p>Dystans: ${dystans.toFixed(1)} km, Spalanie: ${spalanie.toFixed(2)} l/100km, Koszt: ${kosztZaKm.toFixed(2)} zł/km</p>
+      `;
+
+      renderTable();
+      updateChart();
+      form.reset();
+    });
+
+    // Init
+    renderTable();
+    updateChart();
   </script>
 </body>
 </html>
