@@ -2,250 +2,154 @@
 <html lang="pl">
 <head>
   <meta charset="UTF-8">
-  <title>Monitor Paliwa</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tankowania – Wykres</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-      margin: 0;
-    }
-    label, input, select, button {
-      display: block;
-      width: 100%;
-      margin-top: 10px;
-      box-sizing: border-box;
-    }
-    form, table, #charts, #filters {
-      margin-top: 20px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 14px;
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      text-align: center;
-    }
-    canvas {
-      max-width: 100%;
-    }
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    input, select, button { display: block; margin-top: 10px; width: 100%; padding: 6px; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .row > div { flex: 1; min-width: 100px; }
+    canvas { max-width: 100%; margin-top: 20px; }
     @media (min-width: 600px) {
-      form {
-        max-width: 400px;
-      }
-    }
-    .btn-sm {
-      font-size: 12px;
-      padding: 4px 8px;
-    }
-    .flex {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .flex > * {
-      flex: 1;
+      form { max-width: 400px; }
     }
   </style>
 </head>
 <body>
-  <h1>Monitor tankowania</h1>
 
-  <form id="fuelForm">
-    <label>Aktualny przebieg (km): <input type="number" id="currOdo" required></label>
-    <label>Ilość paliwa (l): <input type="number" step="0.01" id="liters" required></label>
-    <label>Cena za całość (zł): <input type="number" step="0.01" id="totalCost" required></label>
-    <label>Rodzaj paliwa:
-      <select id="fuelType">
-        <option value="lpg" selected>LPG</option>
-        <option value="benzyna">Benzyna</option>
-      </select>
-    </label>
-    <button type="submit">Dodaj tankowanie</button>
-  </form>
+<h1>Dodaj tankowanie</h1>
 
-  <div id="filters" class="flex">
-    <div>
-      <label>Filtruj paliwo:
-        <select id="filterFuel">
-          <option value="">Wszystkie</option>
-          <option value="lpg">LPG</option>
-          <option value="benzyna">Benzyna</option>
-        </select>
-      </label>
-    </div>
-    <div>
-      <label>Filtruj datę (od): <input type="date" id="filterDate"></label>
-    </div>
-    <div>
-      <button onclick="clearFilters()">Wyczyść filtry</button>
-    </div>
+<form id="fuelForm">
+  <label>Aktualny przebieg (km): <input type="number" id="currOdo" required></label>
+  <label>Ilość paliwa (litry): <input type="number" step="0.01" id="liters" required></label>
+
+  <div class="row">
+    <div><label>Cena za całość (zł): <input type="number" step="0.01" id="totalCost"></label></div>
+    <div><label>Cena za litr (zł): <input type="number" step="0.01" id="pricePerLiter"></label></div>
   </div>
 
-  <div id="results"></div>
-    <div id="history">
-    <h2>Historia tankowań</h2>
-    <button onclick="exportCSV()">Eksportuj CSV</button>
-    <table id="historyTable">
-      <thead>
-        <tr>
-          <th>Data</th><th>Rodzaj</th><th>Dystans</th><th>Spalanie</th><th>Koszt/km</th><th>Akcje</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
+  <label>Rodzaj paliwa:
+    <select id="fuelType">
+      <option value="lpg" selected>LPG</option>
+      <option value="benzyna">Benzyna</option>
+    </select>
+  </label>
+
+  <label>Data tankowania:</label>
+  <div class="row">
+    <div><select id="day"></select></div>
+    <div><select id="month"></select></div>
+    <div><select id="year"></select></div>
   </div>
 
-  <div id="charts">
-    <h2>Wykres</h2>
-    <canvas id="fuelChart"></canvas>
-  </div>
-  <script>
+  <button type="submit">Zapisz tankowanie</button>
+</form>
+
+<button onclick="location.href='historia.html'">📋 Przejdź do historii</button>
+
+<canvas id="fuelChart"></canvas>
+
+<script>
+  // Inicjalizacja pól daty
+  const today = new Date();
+  const daySelect = document.getElementById("day");
+  const monthSelect = document.getElementById("month");
+  const yearSelect = document.getElementById("year");
+
+  for (let i = 1; i <= 31; i++) {
+    const opt = new Option(i.toString().padStart(2, '0'), i);
+    if (i === today.getDate()) opt.selected = true;
+    daySelect.append(opt);
+  }
+
+  for (let i = 1; i <= 12; i++) {
+    const opt = new Option(i.toString().padStart(2, '0'), i);
+    if (i === today.getMonth() + 1) opt.selected = true;
+    monthSelect.append(opt);
+  }
+
+  const thisYear = today.getFullYear();
+  for (let i = thisYear - 5; i <= thisYear + 1; i++) {
+    const opt = new Option(i, i);
+    if (i === thisYear) opt.selected = true;
+    yearSelect.append(opt);
+  }
+
   const form = document.getElementById("fuelForm");
-  const tableBody = document.querySelector("#historyTable tbody");
   const chartCtx = document.getElementById("fuelChart").getContext("2d");
-  const filterFuel = document.getElementById("filterFuel");
-  const filterDate = document.getElementById("filterDate");
-
-  let historyData = JSON.parse(localStorage.getItem("fuelHistory")) || [];
+  let history = JSON.parse(localStorage.getItem("fuelHistory") || "[]");
 
   const chart = new Chart(chartCtx, {
     type: 'line',
     data: {
       labels: [],
       datasets: [
-        { label: 'Spalanie LPG', borderColor: 'green', data: [], yAxisID: 'y', tension: 0.2 },
-        { label: 'Spalanie Benzyna', borderColor: 'red', data: [], yAxisID: 'y', tension: 0.2 },
-        { label: 'Koszt/km LPG', borderColor: 'blue', data: [], yAxisID: 'y1', tension: 0.2 },
-        { label: 'Koszt/km Benzyna', borderColor: 'orange', data: [], yAxisID: 'y1', tension: 0.2 },
+        { label: 'Spalanie LPG', borderColor: 'green', data: [], yAxisID: 'y', tension: 0.3 },
+        { label: 'Spalanie Benzyna', borderColor: 'red', data: [], yAxisID: 'y', tension: 0.3 },
+        { label: 'Koszt/km LPG', borderColor: 'blue', data: [], yAxisID: 'y1', tension: 0.3 },
+        { label: 'Koszt/km Benzyna', borderColor: 'orange', data: [], yAxisID: 'y1', tension: 0.3 }
       ]
     },
     options: {
       scales: {
-        y: { title: { display: true, text: 'l/100km' }, position: 'left' },
-        y1: { title: { display: true, text: 'zł/km' }, position: 'right', grid: { drawOnChartArea: false } }
+        y: { title: { display: true, text: "l/100km" }, position: "left" },
+        y1: { title: { display: true, text: "zł/km" }, position: "right", grid: { drawOnChartArea: false } }
       }
     }
   });
 
-  function updateChart(data) {
-    const labels = data.map((_, i) => `#${i + 1}`);
+  function updateChart() {
+    const labels = history.slice(1).map((_, i) => `#${i + 1}`);
     chart.data.labels = labels;
-    chart.data.datasets[0].data = data.map(e => e.rodzaj === 'lpg' ? e.spalanie : null);
-    chart.data.datasets[1].data = data.map(e => e.rodzaj === 'benzyna' ? e.spalanie : null);
-    chart.data.datasets[2].data = data.map(e => e.rodzaj === 'lpg' ? e.kosztZaKm : null);
-    chart.data.datasets[3].data = data.map(e => e.rodzaj === 'benzyna' ? e.kosztZaKm : null);
+    chart.data.datasets[0].data = history.slice(1).map(e => e.rodzaj === 'lpg' ? e.spalanie : null);
+    chart.data.datasets[1].data = history.slice(1).map(e => e.rodzaj === 'benzyna' ? e.spalanie : null);
+    chart.data.datasets[2].data = history.slice(1).map(e => e.rodzaj === 'lpg' ? e.kosztZaKm : null);
+    chart.data.datasets[3].data = history.slice(1).map(e => e.rodzaj === 'benzyna' ? e.kosztZaKm : null);
     chart.update();
-  }
-
-  function renderTable(data = historyData) {
-    tableBody.innerHTML = "";
-    data.forEach((e, i) => {
-      const row = document.createElement("tr");
-      row.innerHTML = `
-        <td>${e.data}</td>
-        <td>${e.rodzaj}</td>
-        <td>${e.dystans.toFixed(1)}</td>
-        <td>${e.spalanie.toFixed(2)}</td>
-        <td>${e.kosztZaKm.toFixed(2)}</td>
-        <td>
-          <button class="btn-sm" onclick="editEntry(${i})">Edytuj</button>
-          <button class="btn-sm" onclick="deleteEntry(${i})">Usuń</button>
-        </td>`;
-      tableBody.appendChild(row);
-    });
-    updateChart(data);
-  }
-
-  function applyFilters() {
-    const fuel = filterFuel.value;
-    const date = filterDate.value;
-    let filtered = [...historyData];
-    if (fuel) filtered = filtered.filter(e => e.rodzaj === fuel);
-    if (date) filtered = filtered.filter(e => new Date(e.data) >= new Date(date));
-    renderTable(filtered);
-  }
-
-  function clearFilters() {
-    filterFuel.value = "";
-    filterDate.value = "";
-    renderTable();
-  }
-
-  function deleteEntry(index) {
-    if (confirm("Na pewno usunąć ten wpis?")) {
-      historyData.splice(index, 1);
-      localStorage.setItem("fuelHistory", JSON.stringify(historyData));
-      renderTable();
-    }
-  }
-
-  function editEntry(index) {
-    const entry = historyData[index];
-    const newLiters = prompt("Nowa ilość litrów:", entry.litry || 0);
-    const newCost = prompt("Nowa cena za całość:", entry.koszt || 0);
-    if (newLiters && newCost) {
-      entry.litry = parseFloat(newLiters);
-      entry.koszt = parseFloat(newCost);
-      entry.spalanie = (entry.litry / entry.dystans) * 100;
-      entry.kosztZaKm = entry.koszt / entry.dystans;
-      localStorage.setItem("fuelHistory", JSON.stringify(historyData));
-      renderTable();
-    }
-  }
-
-  function exportCSV() {
-    const headers = "Data,Rodzaj,Dystans,Spalanie,Koszt/km\n";
-    const rows = historyData.map(e =>
-      `${e.data},${e.rodzaj},${e.dystans},${e.spalanie.toFixed(2)},${e.kosztZaKm.toFixed(2)}`
-    ).join("\n");
-    const blob = new Blob([headers + rows], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "historia_tankowan.csv";
-    a.click();
-    URL.revokeObjectURL(url);
   }
 
   form.addEventListener("submit", e => {
     e.preventDefault();
-    const currOdo = parseFloat(document.getElementById("currOdo").value);
-    const liters = parseFloat(document.getElementById("liters").value);
-    const totalCost = parseFloat(document.getElementById("totalCost").value);
-    const rodzaj = document.getElementById("fuelType").value;
-    const data = new Date().toISOString().split("T")[0];
 
-    if (!historyData.length) {
-      historyData.push({ data, rodzaj: "-", dystans: 0, spalanie: 0, kosztZaKm: 0, odo: currOdo });
-      localStorage.setItem("fuelHistory", JSON.stringify(historyData));
-      alert("Dodano pierwszy przebieg. Dodaj następne tankowanie, by obliczyć spalanie.");
+    const odo = parseFloat(document.getElementById("currOdo").value);
+    const liters = parseFloat(document.getElementById("liters").value);
+    const rodzaj = document.getElementById("fuelType").value;
+
+    let totalCost = parseFloat(document.getElementById("totalCost").value);
+    const pricePerLiter = parseFloat(document.getElementById("pricePerLiter").value);
+
+    if (isNaN(totalCost) && isNaN(pricePerLiter)) {
+      return alert("Wprowadź cenę za litr lub za całość.");
+    }
+
+    if (isNaN(totalCost)) totalCost = liters * pricePerLiter;
+    if (isNaN(pricePerLiter)) document.getElementById("pricePerLiter").value = (totalCost / liters).toFixed(2);
+
+    const data = `${yearSelect.value}-${monthSelect.value.toString().padStart(2, '0')}-${daySelect.value.toString().padStart(2, '0')}`;
+
+    if (!history.length) {
+      history.push({ odo, data }); // pierwszy przebieg
+      localStorage.setItem("fuelHistory", JSON.stringify(history));
+      alert("Dodano pierwszy przebieg. Dodaj kolejne, by obliczyć spalanie.");
       form.reset();
       return;
     }
 
-    const prevOdo = historyData[historyData.length - 1].odo;
-    const dystans = currOdo - prevOdo;
-    if (dystans <= 0) return alert("Przebieg musi być większy od poprzedniego!");
+    const last = history[history.length - 1];
+    const dystans = odo - last.odo;
+    if (dystans <= 0) return alert("Przebieg musi być większy niż poprzedni!");
 
     const spalanie = (liters / dystans) * 100;
     const kosztZaKm = totalCost / dystans;
 
-    const entry = { data, rodzaj, dystans, spalanie, kosztZaKm, odo: currOdo, litry: liters, koszt: totalCost };
-    historyData.push(entry);
-    localStorage.setItem("fuelHistory", JSON.stringify(historyData));
-    renderTable();
+    history.push({ data, rodzaj, dystans, spalanie, kosztZaKm, odo, litry: liters, koszt: totalCost });
+    localStorage.setItem("fuelHistory", JSON.stringify(history));
+    updateChart();
     form.reset();
   });
 
-  filterFuel.addEventListener("change", applyFilters);
-  filterDate.addEventListener("change", applyFilters);
-
-  renderTable();
+  updateChart();
 </script>
 </body>
 </html>
